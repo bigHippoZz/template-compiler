@@ -1,6 +1,2 @@
-class Lex {}
-
-console.log(new Lex());
-
-
-console.log(1)
+export * from "./Lexer";
+export * from "./CharCodes";
