@@ -29,6 +29,8 @@ export enum CharCodes {
 	LowerZ = 0x7a, // "z"
 	LowerX = 0x78, // "x"
 
+	Brackets = 91, // '['
+
 	EOF = 0, // EOF
 }
 
