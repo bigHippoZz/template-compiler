@@ -1,4 +1,14 @@
 import { CharCodes, isNewLine } from "./CharCodes";
+import { TextSpan } from "./TextSpan";
+
+export class SourceSpan {
+	constructor(
+		public start: TextSpan,
+		public end: TextSpan,
+		public fullStart: TextSpan = start,
+		public details: string | null = null
+	) {}
+}
 
 export class CursorState {
 	constructor(
@@ -15,10 +25,15 @@ export class Cursor {
 
 	constructor(public source: string) {
 		this._updatePeek();
+		this.length = this.source.length;
 	}
 
 	public peek(): number {
 		return this.state.peek;
+	}
+
+	public getCharRight() {
+		return this.length - this.state.offset;
 	}
 
 	public getSection(startCursor: Cursor): string {
@@ -37,13 +52,35 @@ export class Cursor {
 		this._updateState();
 	}
 
-	public getTextSpan() {}
+	public getTextSpan(start: Cursor): SourceSpan {
+		// const fullStart = start;
+
+		const startLocation = new TextSpan(
+			start.source,
+			start.state.offset,
+			start.state.line,
+			start.state.column
+		);
+
+		const endLocation = new TextSpan(
+			this.source,
+			this.state.offset,
+			this.state.line,
+			this.state.column
+		);
+
+		return new SourceSpan(startLocation, endLocation, startLocation);
+	}
 
 	public shouldStop() {
-		this.state.peek === CharCodes.EOF;
+		return this.state.peek !== CharCodes.EOF;
 	}
 
 	private _updateState() {
+		if (!this.shouldStop()) {
+			throw new Error('Unexpected character "EOF"' + this);
+		}
+
 		this.state.offset++;
 		if (this.state.peek === CharCodes.NewLine) {
 			this.state.line++;
