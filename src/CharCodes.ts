@@ -1,35 +1,35 @@
 export enum CharCodes {
-	SingleQuote = 39,
-	DoubleQuote = 34,
-	Backticks = 96,
+	SingleQuote = 39, // "'"
+	DoubleQuote = 34, // """
+	Backticks = 96, // "`"
 
-	LowerToken = 60,
-	EqualToken = 61,
-	GreaterToken = 62,
+	LowerToken = 60, // <
+	EqualToken = 61, // =
+	GreaterToken = 62, // >
 
-	Tab = 9,
-	NewLine = 10,
-	FormFeed = 12,
-	CarriageReturn = 13,
-	Space = 32,
+	Tab = 9, // "\t"
+	NewLine = 10, // "\n"
+	FormFeed = 12, // "\f"
+	CarriageReturn = 13, // "\r"
+	Space = 32, // " "
 
-	ExclamationMark = 33,
-	Dash = 45,
-	Slash = 47,
-	Questionmark = 63,
+	ExclamationMark = 33, // "!"
+	Dash = 45, // "-"
+	Slash = 47, // "/"
+	Questionmark = 63, // "?"
 
-	Zero = 48,
-	Nine = 57,
+	Zero = 48, // "0"
+	Nine = 57, // "9"
 
-	UpperA = 0x41,
-	LowerA = 0x61,
-	UpperF = 0x46,
-	LowerF = 0x66,
-	UpperZ = 0x5a,
-	LowerZ = 0x7a,
-	LowerX = 0x78,
+	UpperA = 0x41, // "A"
+	LowerA = 0x61, // "a"
+	UpperF = 0x46, // "F"
+	LowerF = 0x66, // "f"
+	UpperZ = 0x5a, // "Z"
+	LowerZ = 0x7a, // "z"
+	LowerX = 0x78, // "x"
 
-	EOF = 0,
+	EOF = 0, // EOF
 }
 
 /**
