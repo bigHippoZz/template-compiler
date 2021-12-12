@@ -5,7 +5,7 @@ export class TextSpan {
 		public line: number,
 		public column: number
 	) {
-		if (this.offset >= this.source.length || isNaN(this.offset)) {
+		if (isNaN(this.offset)) {
 			throw new Error(`Unknown offset position '${this.offset}'`);
 		}
 	}

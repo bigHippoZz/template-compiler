@@ -1,5 +1,10 @@
 import { Cursor, SourceSpan } from "./CursorState";
-import { CharCodes, isAsciiLetter } from "./CharCodes";
+import {
+	CharCodes,
+	isAsciiLetter,
+	isNameEnd,
+	isNotWhitespace,
+} from "./CharCodes";
 import { Diagnostic } from "./Diagnostic";
 
 export enum State {
@@ -82,6 +87,7 @@ export class Lexer {
 			}
 		} catch (e) {
 			console.log(e);
+			throw e;
 		}
 		this._emitToken(State.EOF, [], this.cursor.clone());
 	}
@@ -118,7 +124,7 @@ export class Lexer {
 
 	private _matchingStr(chars: string) {
 		if (!this._attemptStr(chars)) {
-			this.diagnostic.reportUnexpectedCharacter(this.cursor.peek());
+			this.diagnostic.reportUnexpectedCharacter(this.cursor);
 		}
 	}
 
@@ -153,13 +159,103 @@ export class Lexer {
 	}
 
 	private _consumeTagOpen(start: Cursor) {
-		console.log(start);
+		if (!isAsciiLetter(this.cursor.peek())) {
+			this.diagnostic.reportUnexpectedCharacter(this.cursor);
+		}
+		// <div a />
+		// <div />
+		// <div >
+		// <div
+		//    a
+		//    v-if
+		//    >
+		const tagName = this._consumeTagOpenStart(start);
+		// skip whitespace
+		this._attemptCharCodeUntilFn(isNotWhitespace);
+		while (
+			this.cursor.peek() !== CharCodes.Slash &&
+			this.cursor.peek() !== CharCodes.GreaterToken &&
+			this.cursor.peek() !== CharCodes.EOF
+		) {
+			this._consumeAttribute();
+			// skip whitespace
+			this._attemptCharCodeUntilFn(isNotWhitespace);
+		}
+		this._consumeTagOpenEnd(tagName);
+	}
+	private _consumeTagOpenEnd(tagName: string) {
+		const start = this.cursor.clone(),
+			code = this.cursor.peek();
+		if (code === CharCodes.Slash) {
+			this._matchingStr("/>");
+			this._emitToken(State.TAG_OPEN_END_VOID, [tagName], start);
+		} else if (code === CharCodes.GreaterToken) {
+			this._matchingCharCode(CharCodes.GreaterToken);
+			this._emitToken(State.TAG_OPEN_END, [tagName], start);
+		} else {
+			this.diagnostic.reportUnexpectedCharacter(start);
+		}
+	}
+
+	private _consumeAttribute() {
+		this._consumeAttributeName();
+		if (this._attemptCharCode(CharCodes.EqualToken)) {
+			this._consumeAttributeValue();
+		}
+	}
+
+	private _consumeAttributeName() {
+		const start = this.cursor.clone();
+		const attrName = this._consumeName();
+		this._emitToken(State.ATTR_NAME, [attrName], start);
+	}
+
+	private _consumeAttributeValue() {
+		// { } '' ""
+		const expectedCode = this.cursor.peek();
+
+		if (
+			expectedCode !== CharCodes.DoubleQuote &&
+			expectedCode !== CharCodes.SingleQuote
+		) {
+			this.diagnostic.reportUnexpectedCharacter(this.cursor);
+		}
+
+		this._consumeQuote(expectedCode);
+		const start = this.cursor.clone();
+		this._matchingCharCodeUntilFn((code) => code === expectedCode, 1);
+		this._emitToken(
+			State.ATTR_VALUE,
+			[this.cursor.getSection(start)],
+			start
+		);
+		this._consumeQuote(expectedCode);
+	}
+
+	private _consumeQuote(code: number) {
+		const start = this.cursor.clone();
+		this._matchingCharCode(code);
+		this._emitToken(State.ATTR_QUOTE, [String.fromCharCode(code)], start);
+	}
+
+	private _consumeName() {
+		const location = this.cursor.clone();
+		this._matchingCharCodeUntilFn(isNameEnd, 1);
+		const name = this.cursor.getSection(location);
+		return name;
+	}
+
+	private _consumeTagOpenStart(start: Cursor): string {
+		const tagName = this._consumeName();
+		this._emitToken(State.TAG_OPEN_START, [tagName], start);
+		return tagName;
 	}
 
 	private _consumeTagClose(start: Cursor) {
 		// <div></div>
+		const tagName = this._consumeName();
 		this._matchingCharCode(CharCodes.GreaterToken);
-		this._emitToken(State.TAG_CLOSE, [], start);
+		this._emitToken(State.TAG_CLOSE, [tagName], start);
 	}
 
 	private _consumeWithInterpolation(
@@ -259,6 +355,12 @@ export class Lexer {
 		return false;
 	}
 
+	private _attemptCharCodeUntilFn(endMarkerFn: (code: number) => boolean) {
+		while (!endMarkerFn(this.cursor.peek())) {
+			this.cursor.advance();
+		}
+	}
+
 	private _attemptCharCodeUntil(code: number) {
 		while (this.cursor.peek() !== code) {
 			this.cursor.advance();
@@ -291,10 +393,20 @@ export class Lexer {
 
 	private _matchingCharCode(code: number) {
 		if (!this._attemptCharCode(code)) {
-			this.diagnostic.reportUnexpectedCharacter(this.cursor.peek());
+			this.diagnostic.reportUnexpectedCharacter(this.cursor);
 		}
 	}
 
+	private _matchingCharCodeUntilFn(
+		endMarkerFn: (code: number) => boolean,
+		length?: number
+	) {
+		const location = this.cursor.clone();
+		this._attemptCharCodeUntilFn(endMarkerFn);
+		if (length && this.cursor.diff(location) < length) {
+			this.diagnostic.reportUnexpectedCharacter(location);
+		}
+	}
 	private _emitToken(
 		type: State,
 		parts: Array<string>,
@@ -306,64 +418,3 @@ export class Lexer {
 		);
 	}
 }
-
-const template = `<template>
-  <el-form ref="form" label-width="120px">
-    <el-form-item label="Activity name">
-      <el-input v-model="form.name"></el-input>
-    </el-form-item>
-    <el-form-item label="Activity zone">
-      <el-select v-model="form.region" placeholder="please select your zone">
-        <el-option label="Zone one" value="shanghai"></el-option>
-        <el-option label="Zone two" value="beijing"></el-option>
-      </el-select>
-    </el-form-item>
-    <el-form-item label="Activity time">
-      <el-col>
-        <el-date-picker
-          v-model="form.date1"
-          type="date"
-          placeholder="Pick a date"
-          style="width: 100%"
-        ></el-date-picker>
-      </el-col>
-      <el-col class="line" :span="2">-</el-col>
-      <el-col>
-        <el-time-picker
-          v-model="form.date2"
-          placeholder="Pick a time"
-          style="width: 100%"
-        ></el-time-picker>
-      </el-col>
-    </el-form-item>
-    <el-form-item label="Instant delivery">
-      <el-switch v-model="form.delivery"></el-switch>
-    </el-form-item>
-    <el-form-item label="Activity type">
-      <el-checkbox-group v-model="form.type">
-        <el-checkbox label="Online activities" name="type"></el-checkbox>
-        <el-checkbox label="Promotion activities" name="type"></el-checkbox>
-        <el-checkbox label="Offline activities" name="type"></el-checkbox>
-        <el-checkbox label="Simple brand exposure" name="type"></el-checkbox>
-      </el-checkbox-group>
-    </el-form-item>
-    <el-form-item label="Resources">
-      <el-radio-group v-model="form.resource">
-        <el-radio label="Sponsor"></el-radio>
-        <el-radio label="Venue"></el-radio>
-      </el-radio-group>
-    </el-form-item>
-    <el-form-item label="Activity form">
-      <el-input v-model="form.desc" type="textarea"></el-input>
-    </el-form-item>
-    <el-form-item>
-      <el-button type="primary" @click="onSubmit">Create</el-button>
-      <el-button>Cancel</el-button>
-    </el-form-item>
-  </el-form>
-</template>`;
-console.log(template);
-const expression = `<!-- hello -->{{ a }} {{ b}} {{ c}} {{ d}}`;
-const lexer = new Lexer(new Cursor(expression), new Diagnostic());
-lexer.lex();
-console.log(lexer.tokens);

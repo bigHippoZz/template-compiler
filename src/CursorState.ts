@@ -48,13 +48,17 @@ export class Cursor {
 		return cursor;
 	}
 
+	public diff(location: Cursor) {
+		return this.state.offset - location.state.offset;
+	}
+
 	public advance() {
 		this._updateState();
 	}
 
-	public getTextSpan(start: Cursor): SourceSpan {
+	public getTextSpan(start?: Cursor): SourceSpan {
 		// const fullStart = start;
-
+		start = start || this;
 		const startLocation = new TextSpan(
 			start.source,
 			start.state.offset,
@@ -80,12 +84,11 @@ export class Cursor {
 		if (!this.shouldStop()) {
 			throw new Error('Unexpected character "EOF"' + this);
 		}
-
 		this.state.offset++;
-		if (this.state.peek === CharCodes.NewLine) {
+		if (this.state.offset === CharCodes.NewLine) {
 			this.state.line++;
 			this.state.column = 0;
-		} else if (isNewLine(this.state.peek)) {
+		} else if (!isNewLine(this.state.offset)) {
 			this.state.column++;
 		}
 		this._updatePeek();

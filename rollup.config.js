@@ -6,7 +6,7 @@ import commonjs from "@rollup/plugin-commonjs";
 import livereload from "rollup-plugin-livereload";
 export default {
 	input: "src/main.ts",
-	output: { file: "dist/template.js", format: "es" },
+	output: { file: "dist/template.js", format: "esm", sourcemap: true },
 	plugins: [
 		resolve(),
 		commonjs({ browser: true }),
