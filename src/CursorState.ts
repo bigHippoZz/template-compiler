@@ -1,11 +1,11 @@
 import { CharCodes, isNewLine } from "./CharCodes";
-import { TextSpan } from "./TextSpan";
+import { SourceLocation } from "./SourceSpan";
 
 export class SourceSpan {
 	constructor(
-		public start: TextSpan,
-		public end: TextSpan,
-		public fullStart: TextSpan = start,
+		public start: SourceLocation,
+		public end: SourceLocation,
+		public fullStart: SourceLocation = start,
 		public details: string | null = null
 	) {}
 }
@@ -59,14 +59,14 @@ export class Cursor {
 	public getTextSpan(start?: Cursor): SourceSpan {
 		// const fullStart = start;
 		start = start || this;
-		const startLocation = new TextSpan(
+		const startLocation = new SourceLocation(
 			start.source,
 			start.state.offset,
 			start.state.line,
 			start.state.column
 		);
 
-		const endLocation = new TextSpan(
+		const endLocation = new SourceLocation(
 			this.source,
 			this.state.offset,
 			this.state.line,

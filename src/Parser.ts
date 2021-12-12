@@ -1,5 +1,5 @@
 import { State, Token } from "./Lexer";
-import { TextSpan } from "./TextSpan";
+import { SourceLocation } from "./SourceSpan";
 import { Stack } from "./utils";
 import { SourceSpan } from "./CursorState";
 
@@ -81,7 +81,7 @@ export class Parser {
 		const name = attrNameToken.parts[0];
 		let value: string = "";
 		let valueSpan: SourceSpan;
-		let end: TextSpan;
+		let end: SourceLocation;
 		if (this._current.type === State.ATTR_QUOTE) {
 			this.advance();
 		}

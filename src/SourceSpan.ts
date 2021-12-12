@@ -1,4 +1,4 @@
-export class TextSpan {
+export class SourceLocation {
 	constructor(
 		public source: string,
 		public offset: number,
