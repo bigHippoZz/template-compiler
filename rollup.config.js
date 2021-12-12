@@ -4,9 +4,10 @@ import resolve from "@rollup/plugin-node-resolve";
 import serve from "rollup-plugin-serve";
 import commonjs from "@rollup/plugin-commonjs";
 import livereload from "rollup-plugin-livereload";
+import { terser } from "rollup-plugin-terser";
 export default {
 	input: "src/main.ts",
-	output: { file: "dist/template.js", format: "esm", sourcemap: true },
+	output: { file: "dist/template.js", format: "es", sourcemap: true },
 	plugins: [
 		resolve(),
 		commonjs({ browser: true }),
@@ -22,5 +23,6 @@ export default {
 			port: 8888,
 			contentBase: "",
 		}),
+		terser(),
 	],
 };

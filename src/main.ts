@@ -1,6 +1,5 @@
-// export * from "./Lexer";
-// export * from "./CharCodes";
+export * from "./Lexer";
 
-import * as Lexer from "./Lexer";
+export * from "./CharCodes";
 
-console.log(Lexer);
+// export * from "./Parser";
