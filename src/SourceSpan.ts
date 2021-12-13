@@ -14,7 +14,7 @@ export class SourceLocation {
 		return `(${this.line},${this.column})`;
 	}
 
-	public getText(maxLine: number) {
+	public getText(maxLine: number = 3) {
 		// 向前
 		let startOffset = this.offset;
 		let startLine = this.line;
@@ -44,5 +44,51 @@ export class SourceLocation {
 			after: this.source.slice(this.offset, endOffset),
 			content: this.source.slice(startOffset, endOffset),
 		};
+	}
+}
+
+export class SourceSpan {
+	constructor(
+		public start: SourceLocation,
+		public end: SourceLocation,
+		public details: string | null = null
+	) {}
+}
+
+export class ParseSourceFile {
+	constructor(public content: string) {}
+}
+
+export class SourceFile {
+	public lines: Array<string> = [];
+	constructor(
+		public content: string,
+		public length: number = content.length
+	) {
+		this._parseLine();
+	}
+
+	private _parseLine() {
+		let startLocation = 0;
+		let index = 0;
+		while (index < this.length) {
+			const shouldBreak = this._parseBreak(index);
+			if (!shouldBreak) {
+				index++;
+			} else {
+				this.lines.push(this.content.slice(startLocation, index));
+				startLocation = index;
+				index += shouldBreak;
+			}
+		}
+		this.lines.push(this.content.slice(startLocation));
+	}
+
+	private _parseBreak(index: number) {
+		let len = 0;
+		const [l, r] = [this.content[index], this.content[index + 1]];
+		if (l === "\r" && r === "\n") len = 2;
+		else if (l === "\r" || l === "\n") len = 1;
+		return len;
 	}
 }
