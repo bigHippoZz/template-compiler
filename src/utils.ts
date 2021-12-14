@@ -59,6 +59,7 @@ export class Stack<T> {
 		}
 		const node = this._head;
 		this._head = node!.next;
+		this._size--;
 		return node!.value;
 	}
 
