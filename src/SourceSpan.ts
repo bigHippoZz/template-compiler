@@ -1,87 +1,34 @@
-export class SourceLocation {
-	constructor(
-		public source: string,
-		public offset: number,
-		public line: number,
-		public column: number
-	) {
-		if (isNaN(this.offset)) {
-			throw new Error(`Unknown offset position '${this.offset}'`);
-		}
-	}
-
-	public toString() {
-		return `(${this.line},${this.column})`;
-	}
-
-	public getText(maxLine: number = 3) {
-		// 向前
-		let startOffset = this.offset;
-		let startLine = this.line;
-		while (startOffset !== 0) {
-			startOffset--;
-			if (this.source[startOffset] === "\n") {
-				startLine++;
-			}
-			if (startLine >= maxLine) {
-				break;
-			}
-		}
-		// 向后
-		let endOffset = this.offset;
-		let endLine = this.line;
-		while (endOffset < this.source.length) {
-			endOffset++;
-			if (this.source[endOffset] === "\n") {
-				endLine++;
-			}
-			if (endLine >= maxLine) {
-				break;
-			}
-		}
-		return {
-			before: this.source.slice(startOffset, this.offset),
-			after: this.source.slice(this.offset, endOffset),
-			content: this.source.slice(startOffset, endOffset),
-		};
-	}
-}
-
-export class SourceSpan {
-	constructor(
-		public start: SourceLocation,
-		public end: SourceLocation,
-		public details: string | null = null
-	) {}
-}
-
-export class ParseSourceFile {
-	constructor(public content: string) {}
-}
-
 export class SourceFile {
-	public lines: Array<string> = [];
-	constructor(
-		public content: string,
-		public length: number = content.length
-	) {
+	public lines: Array<{ source: string; line: number }> = [];
+	public linesLen: number;
+	public sourceLength: number;
+	constructor(public content: string) {
+		this.sourceLength = content.length;
 		this._parseLine();
+		this.linesLen = this.lines.length;
 	}
-
 	private _parseLine() {
 		let startLocation = 0;
 		let index = 0;
-		while (index < this.length) {
+		let line = 1;
+		while (index < this.sourceLength) {
 			const shouldBreak = this._parseBreak(index);
 			if (!shouldBreak) {
 				index++;
 			} else {
-				this.lines.push(this.content.slice(startLocation, index));
+				this.lines.push({
+					source: this.content.slice(startLocation, index),
+					line: line++,
+				});
+
 				startLocation = index;
 				index += shouldBreak;
 			}
 		}
-		this.lines.push(this.content.slice(startLocation));
+		this.lines.push({
+			source: this.content.slice(startLocation),
+			line,
+		});
 	}
 
 	private _parseBreak(index: number) {
@@ -90,5 +37,71 @@ export class SourceFile {
 		if (l === "\r" && r === "\n") len = 2;
 		else if (l === "\r" || l === "\n") len = 1;
 		return len;
+	}
+}
+
+export class SourceLocation {
+	constructor(
+		public sourceFile: SourceFile,
+		public offset: number,
+		public line: number,
+		public column: number
+	) {}
+
+	public getLines(maxLine: number = 3) {
+		const prevLineIndex = this.line - Math.min(maxLine, this.line);
+		const nextLineIndex =
+			Math.min(this.sourceFile.linesLen - this.line, maxLine) + this.line;
+		return {
+			beforeLine: this.sourceFile.lines.slice(prevLineIndex, this.line),
+			currentLine: this.sourceFile.lines[this.line],
+			nextLine: this.sourceFile.lines.slice(
+				this.line + 1,
+				nextLineIndex + 1
+			),
+			maxIndexLen: (nextLineIndex + 1).toString().length,
+		};
+	}
+
+	public showLines() {
+		// TODO: 这里写复杂了性能蛮差 有时间看看react.js的处理方式
+		const RE = /^\r?\n?/g;
+		const { beforeLine, currentLine, nextLine, maxIndexLen } =
+			this.getLines();
+
+		const segmentation = (lines: Array<{ source: string; line: number }>) =>
+			lines.reduce((prev, cur) => {
+				return (
+					prev +
+					`  ${" ".repeat(maxIndexLen - cur.line.toString().length)}${
+						cur.line
+					} |${" ".repeat(4)}` +
+					cur.source.replace(RE, "") +
+					"\n"
+				);
+			}, "");
+		const message =
+			`\n${segmentation(beforeLine)}` +
+			`> ${" ".repeat(maxIndexLen - currentLine.line.toString().length)}${
+				currentLine.line
+			} |${" ".repeat(4)}${currentLine.source.replace(RE, "")}\n` +
+			`   ${" ".repeat(maxIndexLen + 4 + this.column)}^\n` +
+			`${segmentation(nextLine)}`;
+		return message;
+	}
+}
+
+export class SourceSpan {
+	constructor(
+		public start: SourceLocation,
+		public end: SourceLocation,
+		public fullStart: SourceLocation = start,
+		public details: string | null = null
+	) {}
+	toString(): string {
+		return this.start.sourceFile.content.slice(
+			this.start.offset,
+			this.end.offset
+		);
 	}
 }
