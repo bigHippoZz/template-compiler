@@ -1,4 +1,4 @@
-import { Cursor, SourceSpan } from "./CursorState";
+import { Cursor } from "./CursorState";
 import {
 	CharCodes,
 	isAsciiLetter,
@@ -6,14 +6,13 @@ import {
 	isNotWhitespace,
 } from "./CharCodes";
 import { Diagnostic } from "./Diagnostic";
+import { SourceSpan } from "./SourceSpan";
 
-export enum State {
+export enum SyntaxTokenType {
 	TAG_OPEN_START,
 	TAG_OPEN_END,
 	TAG_OPEN_END_VOID,
 	TAG_CLOSE,
-
-	TEXT,
 
 	COMMENT_START,
 	COMMENT_END,
@@ -26,27 +25,50 @@ export enum State {
 	ATTR_NAME,
 	ATTR_QUOTE,
 	ATTR_VALUE,
+	ATTR_VALUE_TEXT,
+	ATTR_VALUE_INTERPOLATION,
 
-	EOF,
 	RAW_TEXT,
+	TEXT,
 
 	INTERPOLATION,
+
+	EOF,
 }
 
 export class Token {
 	constructor(
-		public type: State,
+		public type: SyntaxTokenType,
 		public parts: string[],
 		public span: SourceSpan
 	) {}
 }
 
 const defaultOptions = {
-	interpolationConf: ["{{", "}}"],
+	interpolationConf: ["{", "}"],
 };
+
+export class InterpolationConfig {
+	private static DEFAULT_CONFIG = ["{{", "}}"] as const;
+	constructor(
+		private _config: readonly [
+			string,
+			string
+		] = InterpolationConfig.DEFAULT_CONFIG
+	) {}
+	public get start() {
+		return this._config[0];
+	}
+	public get end() {
+		return this._config[1];
+	}
+}
 
 export class Lexer {
 	public tokens: Token[] = [];
+
+	private _currentTokenStart: Cursor | null = null;
+	private _currentTokenType: SyntaxTokenType | null = null;
 
 	constructor(
 		public cursor: Cursor,
@@ -55,71 +77,69 @@ export class Lexer {
 	) {}
 
 	public lex() {
-		try {
-			while (this.cursor.shouldStop()) {
-				const start = this.cursor.clone();
-				if (this._attemptCharCode(CharCodes.LowerToken)) {
-					if (this._attemptCharCode(CharCodes.ExclamationMark)) {
-						// <!-- some -->
-						if (this._attemptCharCode(CharCodes.Dash)) {
-							this._consumeComment(start);
-						} else if (this._attemptCharCode(CharCodes.Brackets)) {
-							// <![CDATA[ some ]]>
-							this._consumeCData(start);
-						} else {
-							// <!DOCTYPE html>
-							this._consumeDocType(start);
-						}
-					} else if (this._attemptCharCode(CharCodes.Slash)) {
-						this._consumeTagClose(start);
+		while (this.cursor.shouldStop()) {
+			const start = this.cursor.clone();
+			if (this._attemptCharCode(CharCodes.LowerToken)) {
+				if (this._attemptCharCode(CharCodes.ExclamationMark)) {
+					// <!-- some -->
+					if (this._attemptCharCode(CharCodes.Dash)) {
+						this._consumeComment(start);
+					} else if (this._attemptCharCode(CharCodes.Brackets)) {
+						// <![CDATA[ some ]]>
+						this._consumeCData(start);
 					} else {
-						this._consumeTagOpen(start);
+						// <!DOCTYPE html>
+						this._consumeDocType(start);
 					}
+				} else if (this._attemptCharCode(CharCodes.Slash)) {
+					this._consumeTagClose(start);
 				} else {
-					// hello while {{ a }} hello {{ }}
-					this._consumeWithInterpolation(
-						State.TEXT,
-						State.INTERPOLATION,
-						() => this._isTextEnd(),
-						() => this._isTagStart()
-					);
+					this._consumeTagOpen(start);
 				}
+			} else {
+				this._consumeWithInterpolation(
+					SyntaxTokenType.TEXT,
+					SyntaxTokenType.INTERPOLATION,
+					() => this._isTextEnd(),
+					() => this._isTagStart()
+				);
 			}
-		} catch (e) {
-			console.log(e);
-			throw e;
 		}
-		this._emitToken(State.EOF, [], this.cursor.clone());
+		this._beginToken(SyntaxTokenType.EOF);
+		this._endToken([]);
 	}
 	private _consumeDocType(start: Cursor) {
 		// <!DOCTYPE html>
+		this._beginToken(SyntaxTokenType.DOC_TYPE, start);
 		const contentStart = this.cursor.clone();
 		this._attemptCharCodeUntil(CharCodes.GreaterToken);
 		const content = this.cursor.getSection(contentStart);
 		this.cursor.advance();
-		this._emitToken(State.DOC_TYPE, [content], start);
+		this._endToken([content]);
 	}
 
 	private _consumeCData(start: Cursor) {
+		this._beginToken(SyntaxTokenType.CDATA_START, start);
 		this._matchingStr("CDATA[");
-		this._emitToken(State.CDATA_START, [], start);
+		this._endToken([]);
 
 		this._consumeRawText(() => this._attemptStr("]]>"));
 
-		const CDataEndPos = this.cursor.clone();
+		this._beginToken(SyntaxTokenType.CDATA_END, start);
 		this._matchingStr("]]>");
-		this._emitToken(State.CDATA_END, [], CDataEndPos);
+		this._endToken([]);
 	}
 
 	private _consumeComment(start: Cursor) {
+		this._beginToken(SyntaxTokenType.COMMENT_START, start);
 		this._matchingCharCode(CharCodes.Dash);
-		this._emitToken(State.COMMENT_START, [], start);
+		this._endToken([]);
 
 		this._consumeRawText(() => this._attemptStr("-->"));
 
-		const commentEndPos = this.cursor.clone();
+		this._beginToken(SyntaxTokenType.COMMENT_END);
 		this._matchingStr("-->");
-		this._emitToken(State.COMMENT_END, [], commentEndPos);
+		this._endToken([]);
 	}
 
 	private _matchingStr(chars: string) {
@@ -129,7 +149,7 @@ export class Lexer {
 	}
 
 	private _consumeRawText(endMarker: () => boolean) {
-		const start = this.cursor.clone();
+		this._beginToken(SyntaxTokenType.RAW_TEXT);
 		const parts: string[] = [];
 		while (this.cursor.shouldStop()) {
 			const position = this.cursor.clone();
@@ -140,12 +160,7 @@ export class Lexer {
 			}
 			parts.push(this._readChar());
 		}
-
-		this._emitToken(
-			State.RAW_TEXT,
-			[this._processCarriageReturns(parts.join(""))],
-			start
-		);
+		this._endToken([this._processCarriageReturns(parts.join(""))]);
 	}
 
 	private _processCarriageReturns(chars: string): string {
@@ -184,17 +199,13 @@ export class Lexer {
 		this._consumeTagOpenEnd(tagName);
 	}
 	private _consumeTagOpenEnd(tagName: string) {
-		const start = this.cursor.clone(),
-			code = this.cursor.peek();
-		if (code === CharCodes.Slash) {
-			this._matchingStr("/>");
-			this._emitToken(State.TAG_OPEN_END_VOID, [tagName], start);
-		} else if (code === CharCodes.GreaterToken) {
-			this._matchingCharCode(CharCodes.GreaterToken);
-			this._emitToken(State.TAG_OPEN_END, [tagName], start);
-		} else {
-			this.diagnostic.reportUnexpectedCharacter(start);
-		}
+		const start = this.cursor.clone();
+		const tokenType = this._attemptCharCode(CharCodes.Slash)
+			? SyntaxTokenType.TAG_OPEN_END_VOID
+			: SyntaxTokenType.TAG_OPEN_END;
+		this._beginToken(tokenType, start);
+		this._matchingCharCode(CharCodes.GreaterToken);
+		this._endToken([tagName]);
 	}
 
 	private _consumeAttribute() {
@@ -205,37 +216,40 @@ export class Lexer {
 	}
 
 	private _consumeAttributeName() {
-		const start = this.cursor.clone();
+		this._beginToken(SyntaxTokenType.ATTR_NAME);
 		const attrName = this._consumeName();
-		this._emitToken(State.ATTR_NAME, [attrName], start);
+		this._endToken([attrName]);
 	}
 
 	private _consumeAttributeValue() {
 		// { } '' ""
 		const expectedCode = this.cursor.peek();
-
 		if (
-			expectedCode !== CharCodes.DoubleQuote &&
-			expectedCode !== CharCodes.SingleQuote
+			expectedCode === CharCodes.DoubleQuote ||
+			expectedCode === CharCodes.SingleQuote
 		) {
-			this.diagnostic.reportUnexpectedCharacter(this.cursor);
+			this._consumeQuote(expectedCode);
+			this._consumeWithInterpolation(
+				SyntaxTokenType.ATTR_VALUE_TEXT,
+				SyntaxTokenType.ATTR_VALUE_INTERPOLATION,
+				() => this.cursor.peek() === expectedCode,
+				() => this.cursor.peek() === expectedCode
+			);
+			this._consumeQuote(expectedCode);
+		} else {
+			this._consumeWithInterpolation(
+				SyntaxTokenType.ATTR_VALUE_TEXT,
+				SyntaxTokenType.ATTR_VALUE_INTERPOLATION,
+				() => isNameEnd(this.cursor.peek()),
+				() => isNameEnd(this.cursor.peek())
+			);
 		}
-
-		this._consumeQuote(expectedCode);
-		const start = this.cursor.clone();
-		this._matchingCharCodeUntilFn((code) => code === expectedCode, 1);
-		this._emitToken(
-			State.ATTR_VALUE,
-			[this.cursor.getSection(start)],
-			start
-		);
-		this._consumeQuote(expectedCode);
 	}
 
 	private _consumeQuote(code: number) {
-		const start = this.cursor.clone();
+		this._beginToken(SyntaxTokenType.ATTR_QUOTE);
 		this._matchingCharCode(code);
-		this._emitToken(State.ATTR_QUOTE, [String.fromCharCode(code)], start);
+		this._endToken([String.fromCharCode(code)]);
 	}
 
 	private _consumeName() {
@@ -246,75 +260,81 @@ export class Lexer {
 	}
 
 	private _consumeTagOpenStart(start: Cursor): string {
+		this._beginToken(SyntaxTokenType.TAG_OPEN_START, start);
 		const tagName = this._consumeName();
-		this._emitToken(State.TAG_OPEN_START, [tagName], start);
+		this._endToken([tagName]);
 		return tagName;
 	}
 
 	private _consumeTagClose(start: Cursor) {
-		// <div></div>
+		this._beginToken(SyntaxTokenType.TAG_CLOSE, start);
 		const tagName = this._consumeName();
 		this._matchingCharCode(CharCodes.GreaterToken);
-		this._emitToken(State.TAG_CLOSE, [tagName], start);
+		this._endToken([tagName]);
 	}
 
 	private _consumeWithInterpolation(
-		textToken: State,
-		interpolationToken: State,
+		textToken: SyntaxTokenType,
+		interpolationToken: SyntaxTokenType,
 		endMarkerWithText: () => boolean,
 		endMarkerWithInterpolation: () => boolean
 	) {
-		let textStart = this.cursor.clone();
+		this._beginToken(textToken);
 		let parts: string[] = [];
 		const [interpolationTokenStart] = this.options.interpolationConf;
 		while (!endMarkerWithText()) {
 			const current = this.cursor.clone();
 			if (this._attemptStr(interpolationTokenStart)) {
-				this._emitToken(textToken, parts, textStart, current);
+				this._endToken(
+					[this._processCarriageReturns(parts.join(""))],
+					current
+				);
 				parts = [];
 				this._consumeInterpolation(
 					interpolationToken,
 					current,
 					endMarkerWithInterpolation
 				);
-				textStart = this.cursor.clone();
+				this._beginToken(textToken);
 			} else {
 				parts.push(this._readChar());
 			}
 		}
-		this._emitToken(textToken, parts, textStart);
+		this._endToken([this._processCarriageReturns(parts.join(""))]);
 	}
 
 	private _consumeInterpolation(
-		interpolationToken: State,
+		interpolationToken: SyntaxTokenType,
 		interpolationStart: Cursor,
-		endMarkerWithInterpolation: () => boolean
+		endMarkerWithInterpolation: (() => boolean) | null = null
 	) {
-		const parts: string[] = [];
+		this._beginToken(interpolationToken, interpolationStart);
 
 		const [interpolationTokenStart, interpolationTokenEnd] =
 			this.options.interpolationConf;
-		parts.push(interpolationTokenStart);
+
+		const parts: string[] = [interpolationTokenStart];
 
 		const expressionStart = this.cursor.clone();
 
 		while (
 			this.cursor.peek() !== CharCodes.EOF &&
-			!endMarkerWithInterpolation()
+			(endMarkerWithInterpolation === null ||
+				!endMarkerWithInterpolation())
 		) {
 			const current = this.cursor.clone();
 
 			if (this._isTagStart()) {
 				this.cursor = current;
 				parts.push(this._getProcessedChars(expressionStart, current));
-				this._emitToken(interpolationToken, parts, interpolationStart);
+				this._endToken(parts);
 				return;
 			}
 
 			if (this._attemptStr(interpolationTokenEnd)) {
 				parts.push(this._getProcessedChars(expressionStart, current));
 				parts.push(interpolationTokenEnd);
-				this._emitToken(interpolationToken, parts, interpolationStart);
+				this._endToken(parts);
 				return;
 			}
 
@@ -325,7 +345,7 @@ export class Lexer {
 			this._getProcessedChars(expressionStart, this.cursor.clone())
 		);
 
-		this._emitToken(interpolationToken, parts, interpolationStart);
+		this._endToken(parts);
 	}
 
 	private _getProcessedChars(start: Cursor, end: Cursor) {
@@ -407,14 +427,40 @@ export class Lexer {
 			this.diagnostic.reportUnexpectedCharacter(location);
 		}
 	}
-	private _emitToken(
-		type: State,
-		parts: Array<string>,
-		start: Cursor,
-		end?: Cursor
+
+	private _beginToken(
+		syntaxToken: SyntaxTokenType,
+		start: Cursor = this.cursor.clone()
 	) {
-		this.tokens.push(
-			new Token(type, parts, (end ?? this.cursor).getTextSpan(start))
+		this._currentTokenType = syntaxToken;
+		this._currentTokenStart = start;
+	}
+
+	private _endToken(parts: string[], end?: Cursor) {
+		if (
+			this._currentTokenStart === null ||
+			this._currentTokenType === null
+		) {
+			throw new Error(
+				`Unexpected error : private property _currentTokenStart ` +
+					`or _currentTokenType is null`
+			);
+		}
+
+		const token = this._createToken(
+			new Token(
+				this._currentTokenType,
+				parts,
+				(end ?? this.cursor).getTextSpan(this._currentTokenStart)
+			)
 		);
+
+		this._currentTokenStart = this._currentTokenType = null;
+		return token;
+	}
+
+	private _createToken(token: Token) {
+		this.tokens.push(token);
+		return token;
 	}
 }
