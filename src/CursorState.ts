@@ -1,18 +1,9 @@
 import { CharCodes, isNewLine } from "./CharCodes";
-import { SourceLocation } from "./SourceSpan";
-
-export class SourceSpan {
-	constructor(
-		public start: SourceLocation,
-		public end: SourceLocation,
-		public fullStart: SourceLocation = start,
-		public details: string | null = null
-	) {}
-}
+import { SourceLocation, SourceSpan, SourceFile } from "./SourceSpan";
 
 export class CursorState {
 	constructor(
-		public peek: number = 0,
+		public peek: number = -1,
 		public offset: number = 0,
 		public line: number = 0,
 		public column: number = 0
@@ -20,12 +11,11 @@ export class CursorState {
 }
 
 export class Cursor {
-	public length: number = 0;
+	private _beforeIsCarriageReturn: boolean = false;
 	public state: CursorState = new CursorState();
 
-	constructor(public source: string) {
+	constructor(public source: SourceFile) {
 		this._updatePeek();
-		this.length = this.source.length;
 	}
 
 	public peek(): number {
@@ -33,11 +23,14 @@ export class Cursor {
 	}
 
 	public getCharRight() {
-		return this.length - this.state.offset;
+		return this.source.sourceLength - this.state.offset;
 	}
 
 	public getSection(startCursor: Cursor): string {
-		return this.source.slice(startCursor.state.offset, this.state.offset);
+		return this.source.content.slice(
+			startCursor.state.offset,
+			this.state.offset
+		);
 	}
 
 	public clone() {
@@ -57,8 +50,7 @@ export class Cursor {
 	}
 
 	public getTextSpan(start?: Cursor): SourceSpan {
-		// const fullStart = start;
-		start = start || this;
+		start = start ?? this;
 		const startLocation = new SourceLocation(
 			start.source,
 			start.state.offset,
@@ -73,31 +65,50 @@ export class Cursor {
 			this.state.column
 		);
 
-		return new SourceSpan(startLocation, endLocation, startLocation);
+		return new SourceSpan(startLocation, endLocation);
 	}
 
 	public shouldStop() {
 		return this.state.peek !== CharCodes.EOF;
 	}
 
+	public locationFromCursor() {
+		return new SourceLocation(
+			this.source,
+			this.state.offset,
+			this.state.line,
+			this.state.column
+		);
+	}
+
 	private _updateState() {
 		if (!this.shouldStop()) {
-			throw new Error('Unexpected character "EOF"' + this);
+			throw new Error(
+				`Unexpected character 'EOF' ` + JSON.stringify(this.state)
+			);
 		}
-		this.state.offset++;
-		if (this.state.offset === CharCodes.NewLine) {
+		if (
+			this.state.peek === CharCodes.CarriageReturn ||
+			(this.state.peek === CharCodes.NewLine &&
+				!this._beforeIsCarriageReturn)
+		) {
+			if (this.state.peek === CharCodes.CarriageReturn) {
+				this._beforeIsCarriageReturn = true;
+			}
 			this.state.line++;
 			this.state.column = 0;
-		} else if (!isNewLine(this.state.offset)) {
+		} else if (!isNewLine(this.state.peek)) {
+			this._beforeIsCarriageReturn = false;
 			this.state.column++;
 		}
+		this.state.offset++;
 		this._updatePeek();
 	}
 
 	private _updatePeek() {
 		this.state.peek =
-			this.state.offset < this.source.length
-				? this.source.charCodeAt(this.state.offset)
+			this.state.offset < this.source.sourceLength
+				? this.source.content.charCodeAt(this.state.offset)
 				: CharCodes.EOF;
 	}
 }
