@@ -12,10 +12,11 @@ export class CursorState {
 
 export class Cursor {
 	private _beforeIsCarriageReturn: boolean = false;
+
 	public state: CursorState = new CursorState();
 
-	constructor(public source: SourceFile) {
-		this._updatePeek();
+	constructor(public source: SourceFile, copyState?: CursorState) {
+		copyState ? (this.state = copyState) : this._updatePeek();
 	}
 
 	public peek(): number {
@@ -34,10 +35,12 @@ export class Cursor {
 	}
 
 	public clone() {
-		const cursor = new Cursor(this.source);
-		// 浅拷贝
-		cursor.state = Object.assign({}, this.state);
-
+		const cursor: Cursor = new Cursor(this.source, {
+			peek: this.state.peek,
+			line: this.state.line,
+			column: this.state.column,
+			offset: this.state.offset,
+		});
 		return cursor;
 	}
 
