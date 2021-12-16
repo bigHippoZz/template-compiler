@@ -53,6 +53,14 @@ export class Stack<T> {
 		this._size++;
 	}
 
+	public forwardToValue(untilFn: (v: T) => boolean): T | null {
+		while (!this.isEmpty()) {
+			const currentValue = this.pop()!;
+			if (untilFn(currentValue)) return currentValue;
+		}
+		return null;
+	}
+
 	public pop(): T | null {
 		if (this.isEmpty()) {
 			return null;
