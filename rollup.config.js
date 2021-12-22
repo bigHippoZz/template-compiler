@@ -8,23 +8,23 @@ const __DEV__ = process.env.NODE_ENV === 'production';
 
 const extensions = ['.js', '.ts'];
 export default {
-  input: 'src/main.ts',
-  output: { file: 'dist/template.js', sourcemap: true, format: 'es', indent: false },
-  plugins: [
-    resolve({
-      extensions,
-    }),
-    commonjs(),
-    babel({
-      extensions,
-      exclude: 'node_modules/**',
-      skipPreflightCheck: true,
-      babelHelpers: 'bundled',
-    }),
-    livereload(),
-    serve({
-      open: true,
-      port: 8888,
-    }),
-  ],
+	input: 'src/main.ts',
+	output: { file: 'dist/template.js', sourcemap: true, format: 'es', indent: false },
+	plugins: [
+		resolve({
+			extensions,
+		}),
+		commonjs(),
+		babel({
+			extensions,
+			exclude: 'node_modules/**',
+			skipPreflightCheck: true,
+			babelHelpers: 'bundled',
+		}),
+		livereload(),
+		serve({
+			open: true,
+			port: 8888,
+		}),
+	],
 };
