@@ -4,7 +4,7 @@
 	"description": "template",
 	"scripts": {
 		"bootstrap": "pnpm install",
-		"lint:prettier": "prettier --write  *",
+		"lint:prettier": "prettier --write \"src/**/*.ts\"",
 		"dev": "rollup -c -w --environment NODE_ENV:development",
 		"build": "rollup -c --environment NODE_ENV:production"
 	},
@@ -23,6 +23,7 @@
 		"rollup": "^2.61.1",
 		"rollup-plugin-livereload": "^2.0.5",
 		"rollup-plugin-serve": "^1.1.0",
+		"rollup-plugin-terser": "^7.0.2",
 		"tslib": "^2.3.1",
 		"typescript": "^4.5.4"
 	},
