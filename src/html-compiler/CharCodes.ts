@@ -9,7 +9,7 @@ export enum CharCodes {
 
 	Tab = 9, // "\t"
 	NewLine = 10, // "\n"
-	Vtab = 13, // 垂直制表符 \v
+	Vtab = 11, // 垂直制表符 \v
 	FormFeed = 12, // "\f"
 	CarriageReturn = 13, // "\r"
 	Space = 32, // " "
@@ -72,4 +72,52 @@ export enum CharCodes {
 
 export function isNewLine(code: number) {
 	return code === CharCodes.NewLine || code === CharCodes.CarriageReturn;
+}
+
+export function isAsciiLetter(code: number) {
+	return (
+		(code >= CharCodes.LowerA && code <= CharCodes.LowerZ) ||
+		(code >= CharCodes.UpperA && code <= CharCodes.UpperZ)
+	);
+}
+
+export function isDigit(code: number) {
+	return code >= CharCodes.Zero && code <= CharCodes.Nine;
+}
+
+export function isPrefixName(code: number) {
+	return isAsciiLetter(code) || isDigit(code);
+}
+
+export function isWhitespace(code: number) {
+	return (
+		(code >= CharCodes.Tab && code <= CharCodes.CarriageReturn) ||
+		code === CharCodes.Space ||
+		code === CharCodes.Nbsp
+	);
+}
+
+export function isNotWhitespace(code: number) {
+	return !isWhitespace(code) || code === CharCodes.EOF;
+}
+
+export function isNameEnd(code: number) {
+	return (
+		code === CharCodes.EqualToken ||
+		code === CharCodes.SingleQuote ||
+		code === CharCodes.DoubleQuote ||
+		code === CharCodes.Slash ||
+		code === CharCodes.GreaterToken ||
+		code === CharCodes.LowerToken ||
+		isWhitespace(code) ||
+		code === CharCodes.EOF
+	);
+}
+
+export function isQuote(code: number): boolean {
+	return (
+		code === CharCodes.SingleQuote ||
+		code === CharCodes.DoubleQuote ||
+		code === CharCodes.Backticks
+	);
 }
