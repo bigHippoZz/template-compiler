@@ -1,6 +1,6 @@
-import { ParseSourceSpan } from './ParseSourceFile';
-import { Lexer } from './Lexer';
-export namespace HTML_AST {
+import { ParseSourceSpan } from "./ParseSourceFile";
+import { Lexer } from "./Lexer";
+export namespace AST {
 	export interface Visitor {
 		visit?(node: Node, context: any): any;
 		visitElement(element: Element, context: any): any;
@@ -42,7 +42,7 @@ export namespace HTML_AST {
 		constructor(
 			public name: string,
 			public value: string,
-			public valueTokens: Lexer.Token[],
+			public valueTokens: Lexer.Token[] | undefined,
 			sourceSpan: ParseSourceSpan,
 			public readonly keySourceSpan: ParseSourceSpan | undefined,
 			public valueSourceSpan: ParseSourceSpan | undefined,

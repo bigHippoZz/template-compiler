@@ -1,8 +1,8 @@
-import { CharCodes, isAsciiLetter, isNameEnd, isNotWhitespace, isQuote } from './CharCodes';
-import { Cursor } from './Cursor';
-import { ParseError, ParseSourceSpan, ParseSourceFile } from './ParseSourceFile';
-import { DEFAULT_INTERPOLATION_CONFIG, InterpolationConfig } from './InterpolationConfig';
-import { getHtmlTagDefinition, TagContentType, TagDefinition } from './HtmlTags';
+import { CharCodes, isAsciiLetter, isNameEnd, isNotWhitespace, isQuote } from "./CharCodes";
+import { Cursor } from "./Cursor";
+import { ParseError, ParseSourceSpan, ParseSourceFile } from "./ParseSourceFile";
+import { DEFAULT_INTERPOLATION_CONFIG, InterpolationConfig } from "./InterpolationConfig";
+import { getHtmlTagDefinition, TagContentType, TagDefinition } from "./HtmlTags";
 
 export namespace Lexer {
 	export class LexerTokenError extends ParseError {
@@ -113,25 +113,25 @@ export namespace Lexer {
 
 		private _consumeCDATA(start: Cursor) {
 			this._beginToken(TokenType.CODE_DATA_START, start);
-			this._expectStr('CDATA[');
+			this._expectStr("CDATA[");
 			this._endToken();
 
-			this._consumeRawText(() => this._attemptStr(']]>'));
+			this._consumeRawText(() => this._attemptStr("]]>"));
 
 			this._beginToken(TokenType.CODE_DATA_END);
-			this._expectStr(']]>');
+			this._expectStr("]]>");
 			this._endToken();
 		}
 
 		private _consumeComment(start: Cursor) {
 			this._beginToken(TokenType.COMMENT_START, start);
-			this._expectStr('-');
+			this._expectStr("-");
 			this._endToken();
 
-			this._consumeRawText(() => this._attemptStr('-->'));
+			this._consumeRawText(() => this._attemptStr("-->"));
 
 			this._beginToken(TokenType.COMMENT_END);
-			this._expectStr('-->');
+			this._expectStr("-->");
 			this._endToken();
 		}
 
@@ -185,7 +185,7 @@ export namespace Lexer {
 						tagOpenToken.type = TokenType.INCOMPLETE_TAG_OPEN;
 					} else {
 						this._beginToken(TokenType.TEXT, start);
-						this._endToken(['<']);
+						this._endToken(["<"]);
 					}
 					return;
 				}
@@ -228,7 +228,7 @@ export namespace Lexer {
 				const current = this._cursor.clone();
 
 				if (this._attemptStr(this._interpolationConfig.start)) {
-					this._endToken([this._processCarriageReturn(parts.join(''))], current);
+					this._endToken([this._processCarriageReturn(parts.join(""))], current);
 					parts = [];
 					this._consumeInterpolation(
 						InterpolationTokenType,
@@ -241,7 +241,7 @@ export namespace Lexer {
 				}
 			}
 
-			this._endToken([this._processCarriageReturn(parts.join(''))]);
+			this._endToken([this._processCarriageReturn(parts.join(""))]);
 		}
 
 		private _consumeRawTextWithTagClose(tagName: string) {
@@ -336,7 +336,7 @@ export namespace Lexer {
 						parts.push(endInterpolation);
 						this._endToken(parts);
 						return;
-					} else if (this._attemptStr('//')) {
+					} else if (this._attemptStr("//")) {
 						inComment = true;
 					}
 				}
@@ -427,7 +427,7 @@ export namespace Lexer {
 
 		private _endToken(parts: string[] = [], end?: Cursor) {
 			if (!this._currentTokenStart || !this._currentTokenType) {
-				throw new Error('Unexpected Error');
+				throw new Error("Unexpected Error");
 			}
 
 			const token = new Token(
@@ -456,7 +456,7 @@ export namespace Lexer {
 				parts.push(this._readChar());
 			}
 
-			this._endToken([this._processCarriageReturn(parts.join(''))]);
+			this._endToken([this._processCarriageReturn(parts.join(""))]);
 		}
 
 		private _attemptCharCode(code: CharCodes): boolean {
@@ -525,7 +525,7 @@ export namespace Lexer {
 		}
 
 		private _processCarriageReturn(str: string): string {
-			return str.replace(/\r\n?/g, '\n');
+			return str.replace(/\r\n?/g, "\n");
 		}
 
 		private _readChar(): string {
@@ -537,7 +537,7 @@ export namespace Lexer {
 		private _createUnexpectedCharacterMessage() {
 			return `Unexpected Character "${
 				this._cursor.peek() === CharCodes.EOF
-					? 'EOF'
+					? "EOF"
 					: String.fromCharCode(this._cursor.peek())
 			}"`;
 		}
@@ -555,7 +555,34 @@ export namespace Lexer {
 			getHtmlTagDefinition,
 			DEFAULT_INTERPOLATION_CONFIG,
 		);
+
 		tokenizer.lex();
-		return new TokenizeResult(tokenizer.tokens, []);
+
+		return new TokenizeResult(mergeTextToken(tokenizer.tokens), tokenizer.errors);
+	}
+
+	export function mergeTextToken(tokens: Token[]) {
+		const result: Token[] = [];
+		let currentTextToken: Token | null = null;
+
+		for (let i = 0; i < tokens.length; i++) {
+			const token = tokens[i];
+			if (
+				(currentTextToken &&
+					token.type === TokenType.TEXT &&
+					currentTextToken.type === TokenType.TEXT) ||
+				(currentTextToken &&
+					token.type === TokenType.ATTR_VALUE_TEXT &&
+					currentTextToken.type === TokenType.ATTR_VALUE_TEXT)
+			) {
+				currentTextToken.parts[0] += token.parts[0];
+				currentTextToken.sourceSpan.end = token.sourceSpan.end;
+			} else {
+				currentTextToken = token;
+				result.push(currentTextToken);
+			}
+		}
+
+		return result;
 	}
 }

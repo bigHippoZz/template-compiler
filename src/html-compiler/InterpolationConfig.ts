@@ -11,4 +11,4 @@ export class InterpolationConfig {
 	}
 }
 
-export const DEFAULT_INTERPOLATION_CONFIG = new InterpolationConfig('{{', '}}');
+export const DEFAULT_INTERPOLATION_CONFIG = new InterpolationConfig("{{", "}}");

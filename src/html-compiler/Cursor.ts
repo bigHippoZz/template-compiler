@@ -1,5 +1,5 @@
-import { ParseLocation, ParseSourceFile, ParseSourceSpan } from './ParseSourceFile';
-import { CharCodes, isNewLine } from './CharCodes';
+import { ParseLocation, ParseSourceFile, ParseSourceSpan } from "./ParseSourceFile";
+import { CharCodes, isNewLine } from "./CharCodes";
 
 export class CursorState {
 	constructor(
