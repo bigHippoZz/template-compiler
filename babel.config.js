@@ -1,16 +1,16 @@
 module.exports = {
 	presets: [
 		[
-			'@babel/preset-env',
+			"@babel/preset-env",
 			{
 				targets: {
-					browsers: ['ie >= 8'],
+					browsers: ["ie >= 8"],
 				},
 				modules: false,
 				loose: true,
 			},
 		],
-		'@babel/preset-typescript',
+		"@babel/preset-typescript",
 	],
-	plugins: ['@babel/plugin-transform-runtime'],
+	plugins: ["@babel/plugin-transform-runtime"],
 };

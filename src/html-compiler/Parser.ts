@@ -1,4 +1,4 @@
-import { AST } from "./AST";
+import { TagAST } from "./AST";
 import { TagDefinition } from "./HtmlTags";
 import { Lexer } from "./Lexer";
 import { ParseError, ParseSourceSpan, ParseLocation } from "./ParseSourceFile";
@@ -13,7 +13,7 @@ export namespace Parser {
 		}
 	}
 	export class ParseTreeResult {
-		constructor(public rootNodes: AST.Node[], public errors: ParseError[]) {}
+		constructor(public rootNodes: TagAST.Node[], public errors: ParseError[]) {}
 	}
 
 	export class TreeBuilderError extends ParseError {
@@ -27,18 +27,17 @@ export namespace Parser {
 	}
 
 	export class _TreeBuilder {
-		public rootNodes: AST.Node[] = [];
+		public rootNodes: TagAST.Node[] = [];
 		public errors: TreeBuilderError[] = [];
 
 		private _index: number = -1;
-		private _stack: AST.Element[] = [];
+		private _stack: TagAST.Element[] = [];
 		constructor(
 			private _tokens: Lexer.Token[],
 			private getTagDefinition: (tagName: string) => TagDefinition,
 		) {
 			this._advance();
 		}
-
 		private get _current(): Lexer.Token {
 			return this._tokens[this._index];
 		}
@@ -83,7 +82,7 @@ export namespace Parser {
 			const tagName = tagOpenToken.parts[0];
 
 			// process attr
-			const attributes: AST.Attribute[] = [];
+			const attributes: TagAST.Attribute[] = [];
 			while (this._current.type === Lexer.TokenType.ATTR_NAME) {
 				attributes.push(this._consumeAttr(this._advance()));
 			}
@@ -113,7 +112,7 @@ export namespace Parser {
 
 			const startSpan = new ParseSourceSpan(tagOpenToken.sourceSpan.start, end);
 
-			const element = new AST.Element(tagName, attributes, [], span, startSpan, undefined);
+			const element = new TagAST.Element(tagName, attributes, [], span, startSpan, undefined);
 
 			this._pushElement(element);
 
@@ -127,23 +126,36 @@ export namespace Parser {
 			}
 		}
 
-		private _pushElement(element: AST.Element) {
+		private _pushElement(element: TagAST.Element) {
 			this._addToParent(element);
 
 			this._stack.push(element);
 		}
 
-		private _addToParent(element: AST.Node) {
+		private _addToParent(element: TagAST.Node) {
 			const parent = this._getParentElement();
 
 			parent ? parent.children.push(element) : this.rootNodes.push(element);
 		}
 
-		private _getParentElement(): AST.Element | null {
+		private _getParentElement(): TagAST.Element | null {
 			return this._stack.length ? this._stack[this._stack.length - 1] : null;
 		}
 
-		private _popElement(tagName: string, endSourceSpan: ParseSourceSpan | null) {}
+		private _popElement(tagName: string, endSourceSpan: ParseSourceSpan | null) {
+			for (let i = this._stack.length - 1; i >= 0; i--) {
+				const element = this._stack[i];
+				if (element.name === tagName) {
+					element.endSourceSpan = endSourceSpan;
+					if (endSourceSpan) {
+						element.sourceSpan.end = endSourceSpan.end;
+					}
+					this._stack.splice(i, this._stack.length - i);
+					return true;
+				}
+			}
+			return false;
+		}
 
 		private _consumeAttr(attributeToken: Lexer.Token) {
 			const attributeName = attributeToken.parts[0],
@@ -174,7 +186,7 @@ export namespace Parser {
 			const valueSpan =
 				valueStartSpan && valueEnd && new ParseSourceSpan(valueStartSpan.start, valueEnd);
 
-			return new AST.Attribute(
+			return new TagAST.Attribute(
 				attributeName,
 				attributeValue,
 				tokens.length ? tokens : void 0,
@@ -184,11 +196,27 @@ export namespace Parser {
 			);
 		}
 
-		private _consumeTagClose(tagCloseToken: Lexer.Token) {}
+		private _consumeTagClose(tagCloseToken: Lexer.Token) {
+			const tagName = tagCloseToken.parts[0];
+			if (this.getTagDefinition(tagName).isVoid) {
+				this.errors.push(
+					new TreeBuilderError(
+						tagName,
+						`Void elements do not have end tags "${tagName}"`,
+						tagCloseToken.sourceSpan,
+					),
+				);
+			} else if (!this._popElement(tagName, tagCloseToken.sourceSpan)) {
+				const errMsg = `Unexpected closing tag "${tagName}". It may happen when the tag has already been closed by another tag. For more info see https://www.w3.org/TR/html5/syntax.html#closing-elements-that-have-implied-end-tags`;
+				this.errors.push(new TreeBuilderError(tagName, errMsg, tagCloseToken.sourceSpan));
+			}
+		}
 
 		private _consumeText(textToken: Lexer.Token) {
 			const tokens = [textToken];
 			const startToken = textToken.sourceSpan.start;
+
+			let currentToken: Lexer.Token | undefined = undefined;
 
 			let text = textToken.parts.join("");
 
@@ -196,12 +224,17 @@ export namespace Parser {
 				this._current.type === Lexer.TokenType.TEXT ||
 				this._current.type === Lexer.TokenType.INTERPOLATION
 			) {
-				const current = this._advance();
-				tokens.push(current);
-				text += current.parts.join("");
+				currentToken = this._advance();
+				tokens.push(currentToken);
+				text += currentToken.parts.join("");
 			}
 
-			const textAst = new AST.Text(text, tokens, new ParseSourceSpan(startToken, startToken));
+			if (text.length) {
+				const endSpan = currentToken?.sourceSpan ?? textToken.sourceSpan;
+				this._addToParent(
+					new TagAST.Text(text, tokens, new ParseSourceSpan(startToken, endSpan.end)),
+				);
+			}
 		}
 
 		private _consumeComment(commentToken: Lexer.Token) {
@@ -209,14 +242,17 @@ export namespace Parser {
 			const end = this._advanceIf(Lexer.TokenType.CODE_DATA_END);
 			const value = text?.parts[0].trim() ?? "";
 			this._addToParent(
-				new AST.Comment(
+				new TagAST.Comment(
 					value,
 					new ParseSourceSpan(commentToken.sourceSpan.start, end?.sourceSpan.end!),
 				),
 			);
 		}
 
-		private _consumeCodeData(codeDataToken: Lexer.Token) {}
+		private _consumeCodeData(_codeDataToken: Lexer.Token) {
+			this._consumeText(this._advance());
+			this._advanceIf(Lexer.TokenType.CODE_DATA_END);
+		}
 
 		private _shouldStop() {
 			return this._current.type !== Lexer.TokenType.EOF;

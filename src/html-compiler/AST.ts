@@ -1,6 +1,6 @@
 import { ParseSourceSpan } from "./ParseSourceFile";
 import { Lexer } from "./Lexer";
-export namespace AST {
+export namespace TagAST {
 	export interface Visitor {
 		visit?(node: Node, context: any): any;
 		visitElement(element: Element, context: any): any;
@@ -74,5 +74,17 @@ export namespace AST {
 		public visit(visitor: Visitor, context: any) {
 			visitor.visitComment(this, context);
 		}
+	}
+
+	export function visitAll(visitor: Visitor, nodes: Node[], context: any = null) {
+		const result: any = [];
+		const visit = (astNode: Node) =>
+			visitor.visit ? visitor.visit(astNode, context) : astNode.visit(visitor, context);
+
+		nodes.forEach((astNode) => {
+			const visitResult = visit(astNode);
+			visitResult && result.push(visitResult);
+		});
+		return result;
 	}
 }
