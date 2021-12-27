@@ -19,7 +19,7 @@ export namespace ExpressionLexer {
 		Error,
 	}
 
-	export const KEYWORDS = ["this", "true", "false", "undefined", "null"] as const;
+	export const KEYWORDS = ["this", "true", "false", "undefined", "null", "let"] as const;
 
 	export class Lexer {
 		public tokenize(input: string) {
@@ -304,12 +304,12 @@ export namespace ExpressionLexer {
 			public start: number,
 			public end: number,
 			public type: SyntaxTokenKind,
-			public numberValue: number,
-			public StringValue: string,
+			public numValue: number,
+			public strValue: string,
 		) {}
 
 		public isCharacter(code: number) {
-			return this.type === SyntaxTokenKind.Character && this.numberValue === code;
+			return this.type === SyntaxTokenKind.Character && this.numValue === code;
 		}
 
 		public isIdentifier() {
@@ -320,19 +320,22 @@ export namespace ExpressionLexer {
 			return this.type === SyntaxTokenKind.Keyword;
 		}
 		public isKeywordThis() {
-			return this.isKeyword() && this.StringValue === "this";
+			return this.isKeyword() && this.strValue === "this";
 		}
 		public isKeywordTrue() {
-			return this.isKeyword() && this.StringValue === "true";
+			return this.isKeyword() && this.strValue === "true";
 		}
 		public isKeywordFalse() {
-			return this.isKeyword() && this.StringValue === "false";
+			return this.isKeyword() && this.strValue === "false";
 		}
 		public isKeywordNull() {
-			return this.isKeyword() && this.StringValue === "null";
+			return this.isKeyword() && this.strValue === "null";
 		}
 		public isKeywordUndefined() {
-			return this.isKeyword() && this.StringValue === "undefined";
+			return this.isKeyword() && this.strValue === "undefined";
+		}
+		public isKeywordLet() {
+			return this.isKeyword() && this.strValue === "let";
 		}
 
 		public isString() {
@@ -343,12 +346,32 @@ export namespace ExpressionLexer {
 			return this.type === SyntaxTokenKind.Number;
 		}
 
-		public isOperator(operator: string) {
-			return this.type === SyntaxTokenKind.Operator && this.StringValue === operator;
+		public isOperator(operator?: string) {
+			return operator
+				? this.type === SyntaxTokenKind.Operator && this.strValue === operator
+				: this.type === SyntaxTokenKind.Operator;
 		}
 
 		public isError() {
 			return this.type === SyntaxTokenKind.Error;
+		}
+
+		public toNumber() {
+			return this.type === SyntaxTokenKind.Number ? this.numValue : NaN;
+		}
+
+		public toString() {
+			switch (this.type) {
+				case SyntaxTokenKind.Number:
+					return this.numValue;
+				case SyntaxTokenKind.Character:
+				case SyntaxTokenKind.Identifier:
+				case SyntaxTokenKind.Keyword:
+				case SyntaxTokenKind.String:
+				case SyntaxTokenKind.Operator:
+				case SyntaxTokenKind.Error:
+					return this.strValue;
+			}
 		}
 	}
 
