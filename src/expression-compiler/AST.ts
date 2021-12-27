@@ -298,6 +298,20 @@ export namespace ExpressionAST {
 		}
 	}
 
+	export class Interpolation extends Node {
+		constructor(
+			public strings: string[],
+			public expressions: Node[],
+			public span: ParseSpan,
+			public sourceSpan: AbsoluteSourceSpan,
+		) {
+			super();
+		}
+		public visit(visitor: Visitor, context: any) {
+			return visitor.visitInterpolation(this, context);
+		}
+	}
+
 	export interface Visitor {
 		visitPrefixNot(ast: PrefixNot, context: any): any;
 		visitUnary(ast: Unary, context: any): any;
@@ -314,9 +328,8 @@ export namespace ExpressionAST {
 		visitLiteralArray(ast: LiteralArray, context: any): any;
 		visitImplicitReceiver(ast: ImplicitReceiver, context: any): any;
 		visitLiteralPrimitive(ast: LiteralPrimitive, context: any): any;
+		visitInterpolation(ast: Interpolation, context: any): any;
 	}
-
-	export type TemplateBinding = VariableBinding | ExpressionBinding;
 
 	export class ASTWithSource extends Node {
 		constructor(
@@ -329,6 +342,8 @@ export namespace ExpressionAST {
 
 		public visit(visitor: Visitor, context: any) {}
 	}
+
+	export type TemplateBinding = VariableBinding | ExpressionBinding;
 
 	export class VariableBinding {
 		constructor(
@@ -348,7 +363,7 @@ export namespace ExpressionAST {
 
 	export interface TemplateBindingIdentifier {
 		source: string;
-		span: AbsoluteSourceSpan;
+		span?: AbsoluteSourceSpan;
 	}
 
 	export enum ParsedPropertyType {
