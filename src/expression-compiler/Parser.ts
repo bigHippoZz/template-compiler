@@ -1,6 +1,10 @@
 import { ExpressionLexer } from "./Lexer";
-import { CharCodes } from "../html-compiler/CharCodes";
+import { CharCodes, isQuote } from "../html-compiler/CharCodes";
 import { ExpressionAST } from "./AST";
+import {
+	DEFAULT_INTERPOLATION_CONFIG,
+	InterpolationConfig,
+} from "src/html-compiler/InterpolationConfig";
 
 export namespace ExpressionParser {
 	export const EOF = new ExpressionLexer.SyntaxToken(
@@ -11,7 +15,170 @@ export namespace ExpressionParser {
 		"",
 	);
 
-	export class Parser {}
+	export interface InterpolationPiece {
+		text: string;
+		start: number;
+		end: number;
+	}
+
+	export class SplitInterpolation {
+		constructor(
+			public strings: InterpolationPiece[],
+			public expressions: InterpolationPiece[],
+			public offsets: number[],
+		) {}
+	}
+
+	export class Parser {
+		constructor(private _lexer: ExpressionLexer.Lexer) {}
+		public parseTemplateBindings(
+			templateKey: string,
+			templateValue: string,
+			absoluteKeyOffset: number,
+			absoluteValueOffset: number,
+		): TemplateBindingParseResult {
+			const tokens = this._lexer.tokenize(templateValue);
+			const parser = new _ParseAST(templateValue, tokens);
+			return parser.parseTemplateBindings({ source: templateKey });
+		}
+
+		public parseInterpolation(
+			input: string,
+			location: string,
+			absoluteOffset: number,
+			interpolationConfig: InterpolationConfig = DEFAULT_INTERPOLATION_CONFIG,
+		) {
+			const { strings, expressions, offsets } = this._splitInterpolation(
+				input,
+				location,
+				interpolationConfig,
+			);
+
+			if (!expressions.length) return null;
+
+			const expressionNodes: ExpressionAST.Node[] = [];
+
+			for (let i = 0; i < expressions.length; i++) {
+				const expressionStr = expressions[i].text;
+				const tokens = this._lexer.tokenize(expressionStr);
+				expressionNodes.push(new _ParseAST(expressionStr, tokens).parseExpression());
+			}
+
+			return new ExpressionAST.ASTWithSource(
+				new ExpressionAST.Interpolation(
+					strings.map((str) => str.text),
+					expressionNodes,
+					null as any,
+					null as any,
+				),
+				null as any,
+				null as any,
+			);
+		}
+
+		private _splitInterpolation(
+			input: string,
+			location: string,
+			interpolationConfig: InterpolationConfig = DEFAULT_INTERPOLATION_CONFIG,
+		) {
+			const strings: InterpolationPiece[] = [];
+			const expressions: InterpolationPiece[] = [];
+			const offsets: number[] = [];
+			const [interpolationStart, interpolationEnd] = interpolationConfig.from();
+			let atInterpolation = false;
+			let extendsLastString = false;
+			let index = 0;
+
+			while (index < input.length) {
+				if (!atInterpolation) {
+					const start = index;
+					index = input.indexOf(interpolationStart, index);
+					if (index === -1) {
+						index = input.length;
+					}
+					const text = input.substring(start, index);
+					strings.push({ text, start, end: index });
+					atInterpolation = true;
+				} else {
+					const fullStart = index;
+					const expressionStart = fullStart + interpolationStart.length;
+					const expressionEnd = this._getInterpolationEndIndex(
+						input,
+						interpolationEnd,
+						expressionStart,
+					);
+
+					if (expressionEnd === -1) {
+						atInterpolation = false;
+						extendsLastString = true;
+						break;
+					}
+
+					const fullEnd = expressionEnd + interpolationEnd.length;
+
+					const text = input.substring(expressionStart, expressionEnd);
+
+					expressions.push({ text, start: fullStart, end: fullEnd });
+
+					offsets.push(expressionStart);
+
+					index = fullEnd;
+
+					atInterpolation = false;
+				}
+			}
+
+			if (!atInterpolation) {
+				if (extendsLastString) {
+					const piece = strings[strings.length - 1];
+					piece.text += input.substring(index);
+					piece.end = input.length;
+				} else {
+					strings.push({ text: input.substring(index), start: index, end: input.length });
+				}
+			}
+			return new SplitInterpolation(strings, expressions, offsets);
+		}
+		private _getInterpolationEndIndex(input: string, interpolationEnd: string, start: number) {
+			for (const index of this._forEachUnquoteChar(input, start)) {
+				if (input.startsWith(interpolationEnd, index)) {
+					return index;
+				}
+				if (input.startsWith("//")) {
+					return input.indexOf(interpolationEnd, index);
+				}
+			}
+			return -1;
+		}
+
+		private *_forEachUnquoteChar(input: string, start: number) {
+			let currentQuote: string | null = null;
+			let count = 0;
+			for (let i = 0; i < input.length; i++) {
+				const code = input.charCodeAt(i);
+				const char = input.charAt(i);
+				if (
+					isQuote(code) &&
+					(currentQuote === null || currentQuote === char) &&
+					count % 2 === 0
+				) {
+					currentQuote = currentQuote === null ? char : null;
+				} else if (currentQuote === null) {
+					yield i;
+				}
+				// TODO
+				count = char === "\\" ? count++ : count;
+			}
+		}
+	}
+
+	export class TemplateBindingParseResult {
+		constructor(
+			public templateBindings: ExpressionAST.TemplateBinding[],
+			public warnings: string[],
+			public errors: ExpressionAST.ParserError[],
+		) {}
+	}
 
 	export class _ParseAST {
 		public errors: ExpressionAST.ParserError[] = [];
@@ -26,34 +193,67 @@ export namespace ExpressionParser {
 			return this._shouldStop() ? this._tokens[this._index] : EOF;
 		}
 
-		private _shouldStop() {
-			return this._index < this._tokens.length;
-		}
-
-		private _advance() {
-			this._index++;
-		}
-
-		private _createSpan() {
-			return null as unknown as ExpressionAST.ParseSpan;
-		}
-
-		private _createSourceSpan() {
-			return null as unknown as ExpressionAST.AbsoluteSourceSpan;
-		}
-
-		public _parseExpression(): ExpressionAST.Node {
+		public parseExpression(): ExpressionAST.Node {
 			return this._parseConditional();
+		}
+
+		public parseTemplateBindings(
+			templateKey: ExpressionAST.TemplateBindingIdentifier,
+		): TemplateBindingParseResult {
+			const bindings: ExpressionAST.TemplateBinding[] = [];
+			bindings.push(...this._parseDirectiveKeywordBinding(templateKey));
+			while (this._shouldStop()) {
+				const letBinding = this._parseLetBindings();
+				if (letBinding) {
+					bindings.push(letBinding);
+				} else {
+					const key = this._expectTemplateBindingKey();
+					bindings.push(...this._parseDirectiveKeywordBinding(key));
+				}
+			}
+			return new TemplateBindingParseResult(bindings, [], []);
+		}
+
+		private _parseLetBindings() {
+			if (!this._current.isKeywordLet()) return null;
+			this._advance();
+			const key = this._expectTemplateBindingKey();
+			let value: ExpressionAST.TemplateBindingIdentifier | null = null;
+			return new ExpressionAST.VariableBinding(key, value, this._createSourceSpan());
+		}
+
+		private _parseDirectiveKeywordBinding(
+			templateKey: ExpressionAST.TemplateBindingIdentifier,
+		): ExpressionAST.TemplateBinding[] {
+			const bindings: ExpressionAST.TemplateBinding[] = [];
+			// skip colon
+			this._attemptOptionalCharacter(CharCodes.Colon);
+			const value = this._getDirectiveBoundTarget();
+			bindings.push(
+				new ExpressionAST.ExpressionBinding(templateKey, value, this._createSourceSpan()),
+			);
+			return bindings;
+		}
+
+		private _getDirectiveBoundTarget() {
+			if (this._current.isKeywordLet()) return null;
+			const ast = this.parseExpression();
+			debugger;
+			return new ExpressionAST.ASTWithSource(
+				ast,
+				this._createSpan(),
+				this._createSourceSpan(),
+			);
 		}
 
 		private _parseConditional(): ExpressionAST.Node {
 			// condition ? expr : expr
 			const condition = this._parseLogicalOr();
 			if (this._attemptOptionalOperator("?")) {
-				const left = this._parseExpression();
+				const left = this.parseExpression();
 				let right: ExpressionAST.Node;
 				if (this._attemptOptionalCharacter(CharCodes.Colon)) {
-					right = this._parseExpression();
+					right = this.parseExpression();
 				} else {
 					this._reportError(`Conditional expression  requires all 3 expressions`);
 					right = new ExpressionAST.EmptyExpression(
@@ -92,6 +292,22 @@ export namespace ExpressionParser {
 			}
 
 			return left;
+		}
+
+		private _shouldStop() {
+			return this._index < this._tokens.length;
+		}
+
+		private _advance() {
+			this._index++;
+		}
+
+		private _createSpan() {
+			return null as unknown as ExpressionAST.ParseSpan;
+		}
+
+		private _createSourceSpan() {
+			return null as unknown as ExpressionAST.AbsoluteSourceSpan;
 		}
 
 		private _parseLogicalAnd(): ExpressionAST.Node {
@@ -300,7 +516,7 @@ export namespace ExpressionParser {
 
 		private _parseKeyReadOrWrite(thisReceiver: ExpressionAST.Node, isSafe: boolean = false) {
 			// TODO
-			const expr = this._parseExpression();
+			const expr = this.parseExpression();
 
 			this._expectedCharacter(CharCodes.Rbracket);
 
@@ -324,7 +540,7 @@ export namespace ExpressionParser {
 				return this._attemptOptionalOperator("=")
 					? new ExpressionAST.KeyWrite(
 							expr,
-							this._parseExpression(),
+							this.parseExpression(),
 							thisReceiver,
 							this._createSpan(),
 							this._createSourceSpan(),
@@ -343,7 +559,7 @@ export namespace ExpressionParser {
 		private _parsePrimary(): ExpressionAST.Node {
 			if (this._attemptOptionalCharacter(CharCodes.Lparen)) {
 				// (expr)
-				const expression = this._parseExpression();
+				const expression = this.parseExpression();
 				this._expectedCharacter(CharCodes.Rparen);
 				return expression;
 			} else if (this._current.isKeyword()) {
@@ -423,7 +639,7 @@ export namespace ExpressionParser {
 				receiver = this._attemptOptionalOperator("=")
 					? new ExpressionAST.PropertyWrite(
 							id,
-							this._parseExpression(),
+							this.parseExpression(),
 							thisReceiver,
 							this._createSpan(),
 							this._createSourceSpan(),
@@ -469,7 +685,7 @@ export namespace ExpressionParser {
 			const args: ExpressionAST.Node[] = [];
 			do {
 				if (this._current.isCharacter(CharCodes.Rparen)) break;
-				args.push(this._parseExpression());
+				args.push(this.parseExpression());
 			} while (this._attemptOptionalCharacter(CharCodes.Comma));
 			this._expectedCharacter(CharCodes.Rparen);
 			return args;
@@ -503,10 +719,10 @@ export namespace ExpressionParser {
 				if (isQuote) {
 					// { "id": expr }
 					this._expectedCharacter(CharCodes.Colon);
-					values.push(this._parseExpression());
+					values.push(this.parseExpression());
 				} else if (this._attemptOptionalCharacter(CharCodes.Colon)) {
 					// { 10 : expr }
-					values.push(this._parseExpression());
+					values.push(this.parseExpression());
 				} else {
 					// { id }
 					values.push(
@@ -557,7 +773,7 @@ export namespace ExpressionParser {
 			const result: ExpressionAST.Node[] = [];
 			do {
 				if (this._current.isCharacter(CharCodes.Rbracket)) break;
-				result.push(this._parseExpression());
+				result.push(this.parseExpression());
 			} while (this._attemptOptionalCharacter(CharCodes.Comma));
 			this._expectedCharacter(CharCodes.Rbracket);
 			return new ExpressionAST.LiteralArray(
@@ -614,6 +830,21 @@ export namespace ExpressionParser {
 
 		private _expectedCharacter(code: number) {
 			if (this._attemptOptionalCharacter(code)) return;
+		}
+
+		private _expectTemplateBindingKey(): ExpressionAST.TemplateBindingIdentifier {
+			let value = "";
+			let operatorFound = false;
+
+			do {
+				value += this._current.strValue;
+				operatorFound = this._attemptOptionalOperator("-");
+				if (operatorFound) {
+					value += "-";
+				}
+			} while (operatorFound);
+
+			return { source: value };
 		}
 	}
 }
