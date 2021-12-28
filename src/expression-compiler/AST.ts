@@ -412,4 +412,19 @@ export namespace ExpressionAST {
 			public valueSpan?: ParseSourceSpan,
 		) {}
 	}
+
+	export class ParsedEvent {
+		// Regular events have a target
+		// Animation events have a phase
+		constructor(
+			public name: string,
+			public targetOrPhase: string,
+			public type: ParsedEventType,
+			public handler: ASTWithSource,
+			public sourceSpan: ParseSourceSpan,
+			// TODO(FW-2095): keySpan should be required but was made optional to avoid changing VE
+			public handlerSpan: ParseSourceSpan,
+			readonly keySpan: ParseSourceSpan | undefined,
+		) {}
+	}
 }

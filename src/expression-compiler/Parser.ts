@@ -4,7 +4,7 @@ import { ExpressionAST } from "./AST";
 import {
 	DEFAULT_INTERPOLATION_CONFIG,
 	InterpolationConfig,
-} from "src/html-compiler/InterpolationConfig";
+} from "../html-compiler/InterpolationConfig";
 
 export namespace ExpressionParser {
 	export const EOF = new ExpressionLexer.SyntaxToken(
@@ -31,6 +31,13 @@ export namespace ExpressionParser {
 
 	export class Parser {
 		constructor(private _lexer: ExpressionLexer.Lexer) {}
+
+		public parseAction(input: string, location: string, absoluteOffset: number) {
+			const tokens = this._lexer.tokenize(input);
+			const ast = new _ParseAST(input, tokens).parseExpression();
+			return new ExpressionAST.ASTWithSource(ast, null as any, null as any);
+		}
+
 		public parseTemplateBindings(
 			templateKey: string,
 			templateValue: string,
@@ -48,6 +55,7 @@ export namespace ExpressionParser {
 			absoluteOffset: number,
 			interpolationConfig: InterpolationConfig = DEFAULT_INTERPOLATION_CONFIG,
 		) {
+			debugger;
 			const { strings, expressions, offsets } = this._splitInterpolation(
 				input,
 				location,
@@ -154,7 +162,7 @@ export namespace ExpressionParser {
 		private *_forEachUnquoteChar(input: string, start: number) {
 			let currentQuote: string | null = null;
 			let count = 0;
-			for (let i = 0; i < input.length; i++) {
+			for (let i = start; i < input.length; i++) {
 				const code = input.charCodeAt(i);
 				const char = input.charAt(i);
 				if (

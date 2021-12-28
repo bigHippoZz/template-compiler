@@ -121,3 +121,19 @@ export function isQuote(code: number): boolean {
 		code === CharCodes.Backticks
 	);
 }
+
+export function isIdentifierStart(code: number) {
+	return isAsciiLetter(code) || code === CharCodes.Dollar || code === CharCodes.Underscore;
+}
+
+export function isIdentifierPart(code: number) {
+	return (
+		isAsciiLetter(code) ||
+		code === CharCodes.Dollar ||
+		code === CharCodes.Underscore ||
+		isDigit(code)
+	);
+}
+export function isExponentSign(code: number) {
+	return code === CharCodes.Plus || code === CharCodes.Minus;
+}

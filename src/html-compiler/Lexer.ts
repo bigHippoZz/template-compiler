@@ -158,6 +158,9 @@ export namespace Lexer {
 				tagOpenToken = this._consumeTagOpenStart(start);
 				tagName = tagOpenToken.parts[0];
 
+				// skip whitespace
+				this._attemptCharCodeUntilFn(isNotWhitespace);
+
 				let current = this._cursor.peek();
 
 				while (
@@ -165,18 +168,14 @@ export namespace Lexer {
 					current !== CharCodes.Slash &&
 					current !== CharCodes.EOF
 				) {
-					// skip whitespace
-					this._attemptCharCodeUntilFn(isNotWhitespace);
-
 					this._consumeAttributeName();
 					if (this._attemptCharCode(CharCodes.EqualToken)) {
 						this._consumeAttributeValue();
 					}
+					// skip whitespace
+					this._attemptCharCodeUntilFn(isNotWhitespace);
 					current = this._cursor.peek();
 				}
-
-				// skip whitespace
-				this._attemptCharCodeUntilFn(isNotWhitespace);
 
 				this._consumeTagOpenEnd(tagName);
 			} catch (error) {

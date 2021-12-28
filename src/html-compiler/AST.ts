@@ -34,7 +34,7 @@ export namespace TagAST {
 		}
 
 		public visit(visitor: Visitor, context: any) {
-			visitor.visitElement(this, context);
+			return visitor.visitElement(this, context);
 		}
 	}
 
@@ -50,7 +50,7 @@ export namespace TagAST {
 			super(sourceSpan);
 		}
 		public visit(visitor: Visitor, context: any) {
-			visitor.visitAttribute(this, context);
+			return visitor.visitAttribute(this, context);
 		}
 	}
 
@@ -63,7 +63,7 @@ export namespace TagAST {
 			super(sourceSpan);
 		}
 		public visit(visitor: Visitor, context: any) {
-			visitor.visitText(this, context);
+			return visitor.visitText(this, context);
 		}
 	}
 
@@ -72,7 +72,7 @@ export namespace TagAST {
 			super(sourceSpan);
 		}
 		public visit(visitor: Visitor, context: any) {
-			visitor.visitComment(this, context);
+			return visitor.visitComment(this, context);
 		}
 	}
 
